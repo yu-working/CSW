@@ -17,6 +17,12 @@ dotenv.load_dotenv(dotenv_path)
 MODEL = os.getenv("MODEL")
 data_dir = os.getenv("DATA_DIR", "data.xlsx")
 
+# 假設圖片路徑
+# USER_AVATAR = "static/user_icon.png"
+# BOT_AVATAR = "https://your-domain.com/bot-logo.png"
+# 用法
+# with st.chat_message("user", avatar=USER_AVATAR):
+
 # --- 2. 資料讀取 (快取優化) ---
 @st.cache_data
 def read_excel_sheets():
@@ -54,6 +60,24 @@ if "history_text" not in st.session_state:
 
 # 側邊欄：功能按鈕
 with st.sidebar:
+    # 在側邊欄最上方加入輸入框
+    # type="password" 可以隱藏輸入的內容
+    user_api_key = st.text_input(
+        "輸入您的 API KEY", 
+        value=os.getenv("OPENAI_API_KEY", ""), # 預設嘗試讀取 .env
+        type="password",
+        help="輸入後將優先使用此 Key 進行對話"
+    )
+    
+    # 動態更新環境變數，讓 akasha 能讀取到
+    if user_api_key:
+        os.environ["GEMINI_API_KEY"] = user_api_key
+        st.success("API Key 已就緒！")
+    else:
+        st.warning("請輸入 API Key 以開始對話")
+
+    st.divider() # 分隔線
+    
     if st.button("清除對話歷史"):
         st.session_state.messages = []
         st.session_state.history_text = ""

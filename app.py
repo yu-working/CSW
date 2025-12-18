@@ -17,6 +17,25 @@ dotenv.load_dotenv(dotenv_path)
 MODEL = os.getenv("MODEL")
 data_dir = os.getenv("DATA_DIR", "data.xlsx")
 
+MODEL_CONFIG = {
+    "OpenAI (GPT-4o)": {
+        "env_var": "OPENAI_API_KEY",
+        "model_name": "openai:gpt-4o"
+    },
+    "OpenAI (GPT-3.5)": {
+        "env_var": "OPENAI_API_KEY",
+        "model_name": "openai:gpt-3.5-turbo"
+    },
+    "Google Gemini(2.5-flash)": {
+        "env_var": "GEMINI_API_KEY",
+        "model_name": "gemini:gemini-2.5-flash"
+    },
+    "Anthropic Claude": {
+        "env_var": "ANTHROPIC_API_KEY",
+        "model_name": "claude:claude-3-opus-20240229"
+    }
+}
+
 # 假設圖片路徑
 # USER_AVATAR = "static/user_icon.png"
 # BOT_AVATAR = "https://your-domain.com/bot-logo.png"
@@ -60,27 +79,40 @@ if "history_text" not in st.session_state:
 
 # 側邊欄：功能按鈕
 with st.sidebar:
-    # 在側邊欄最上方加入輸入框
+    # 下拉式選單選擇模型
+    selected_model_display = st.selectbox(
+        "選擇模型來源",
+        options=list(MODEL_CONFIG.keys())
+    )
+    
+    # 取得對應的配置
+    config = MODEL_CONFIG[selected_model_display]
+    user_api_key_env_var = config["env_var"]
+    user_model_name = config["model_name"]
+
+    # 加入輸入框
     # type="password" 可以隱藏輸入的內容
     user_api_key = st.text_input(
         "輸入您的 API KEY", 
-        value=os.getenv("OPENAI_API_KEY", ""), # 預設嘗試讀取 .env
+        value="",
         type="password",
         help="輸入後將優先使用此 Key 進行對話"
     )
     # 動態更新環境變數，讓 akasha 能讀取到
     if user_api_key:
-        os.environ["GEMINI_API_KEY"] = user_api_key
+        os.environ[user_api_key_env_var] = user_api_key
         # 發送一次測試請求以確認 Key 有效性
         try:
             test_ak = akasha.ask(
-                model=MODEL,
+                model=user_model_name,
                 temperature=0.1,
             )
             test = test_ak(prompt="return hi")
             st.success("API Key 已就緒！")
+            current_key_in_env = os.getenv(user_api_key_env_var)
         except Exception as e:
             st.error(f"API Key 無效，請檢查後重新輸入。")
+            current_key_in_env = False
     else:
         st.warning("請輸入 API Key 以開始對話")
 
@@ -99,6 +131,9 @@ for message in st.session_state.messages:
 
 # --- 4. 對話邏輯 ---
 if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
+    if not user_api_key or not current_key_in_env:
+        st.error(f"⚠️ 驗證失敗：請檢查後在左側選單重新輸入 **{selected_model_display}** 的 API Key。")
+        st.stop()
     # 顯示使用者訊息
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🦥"):
@@ -108,7 +143,7 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
     with st.chat_message("assistant", avatar="🐑"):
         with st.spinner("思考中..."):
             ak = akasha.ask(
-                model=MODEL,
+                model=user_model_name,
                 temperature=0.1,
                 max_input_tokens=20000,
                 max_output_tokens=20000

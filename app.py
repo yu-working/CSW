@@ -68,11 +68,19 @@ with st.sidebar:
         type="password",
         help="輸入後將優先使用此 Key 進行對話"
     )
-    
     # 動態更新環境變數，讓 akasha 能讀取到
     if user_api_key:
         os.environ["GEMINI_API_KEY"] = user_api_key
-        st.success("API Key 已就緒！")
+        # 發送一次測試請求以確認 Key 有效性
+        try:
+            test_ak = akasha.ask(
+                model=MODEL,
+                temperature=0.1,
+            )
+            test = test_ak(prompt="return hi")
+            st.success("API Key 已就緒！")
+        except Exception as e:
+            st.error(f"API Key 無效，請檢查後重新輸入。")
     else:
         st.warning("請輸入 API Key 以開始對話")
 

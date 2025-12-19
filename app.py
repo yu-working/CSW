@@ -40,7 +40,6 @@ if "history_list" not in st.session_state:
     st.session_state.history_list = []
 if "messages" not in st.session_state:
     st.session_state.messages = []
-# 用來存放讀取好的 Data，避免重複跑 read_excel_sheets
 if "current_data" not in st.session_state:
     st.session_state.current_data = None
 if "file_processed" not in st.session_state:
@@ -116,30 +115,30 @@ with st.sidebar:
     st.divider()
 
     # 3.資料上傳
-    uploaded_file = st.file_uploader("上傳更新資料 (xlsx)", type=["xlsx"])
+    uploaded_file = st.file_uploader(
+        "上傳更新資料 (xlsx)", 
+        type=["xlsx"],
+        )
 
     if uploaded_file is not None and not st.session_state.get("file_processed", False):
         with open(ACTIVE_FILE, "wb") as f:
             f.write(uploaded_file.getbuffer())
         st.cache_data.clear()
         st.session_state.current_data = read_excel_sheets(ACTIVE_FILE)
-        # 設定開關，防止 rerun 後重複進入此 if
         st.session_state.file_processed = True
+        st.success("✅ 資料庫已更新")
         st.rerun()
-        st.success("已成功載入並取代現有資料")
     # 顯示目前檔案資訊
-    current_path = ACTIVE_FILE if os.path.exists(ACTIVE_FILE) else DEFAULT_FILE
-    st.caption(f"目前生效檔案路徑：{current_path}")
+    current_file = uploaded_file.name if os.path.exists(ACTIVE_FILE) else "DEFAULT"
+    st.caption(f"目前生效檔案：{current_file}")
 
-    # 讀取當前生效資料
-
-    if os.path.exists(ACTIVE_FILE):
-        if st.button("🔄 還原為原始預設"):
-            os.remove(ACTIVE_FILE)
-            st.cache_data.clear()
-            st.session_state.current_data = read_excel_sheets(DEFAULT_FILE)
-            st.session_state.file_processed = False
-            st.rerun()
+    # 使用者手動點擊「X」移除檔案時的重置
+    if uploaded_file is None and st.session_state.file_processed:
+        st.session_state.file_processed = False
+        os.remove(ACTIVE_FILE)
+        st.cache_data.clear()
+        st.session_state.current_data = read_excel_sheets(DEFAULT_FILE)
+        st.info("已還原至預設資料庫")
     st.divider()
     
     if st.button("清除對話歷史"):

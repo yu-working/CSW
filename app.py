@@ -8,12 +8,16 @@ import shutil
 
 st.set_page_config(page_title="CSW")
 # --- 1. 環境設定 ---
-DATA_FOLDER = "/app/data"
-DEFAULT_DATA_FILE = "/app/default_data/FAQ_Default.xlsx"
+DATA_FOLDER = os.getenv("DATA_FOLDER", "data")
+DEFAULT_DATA_FILE = os.getenv("DEFAULT_DATA_FILE", "default_data/FAQ_Default.xlsx")
 os.makedirs(DATA_FOLDER, exist_ok=True)
 DEFAULT_FILE = os.path.join(DATA_FOLDER, "FAQ_Default.xlsx")
 if not os.path.exists(DEFAULT_FILE):
-    shutil.copy(DEFAULT_DATA_FILE, DEFAULT_FILE)
+    if not os.path.exists(DEFAULT_DATA_FILE):
+        st.write(f"缺少預設文件{DEFAULT_DATA_FILE}，請建立資料夾 default_data 並將 FAQ_Default.xlsx 存入後重新整理頁面。")
+        st.stop()
+    else:
+        shutil.copy(DEFAULT_DATA_FILE, DEFAULT_FILE)
 ACTIVE_FILE = os.path.join(DATA_FOLDER, "FAQ_Active.xlsx")
 
 MODEL_CONFIG = {
@@ -173,7 +177,7 @@ system_prompt = f"""
 
 # --- 6. 主介面顯示 ---
 st.title("Customer Service Wingman")
-st.caption("Version: 1.0.0")
+st.caption("Version: v1.0.0")
 
 # 顯示現有的對話紀錄
 for message in st.session_state.messages:

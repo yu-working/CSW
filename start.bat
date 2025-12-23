@@ -4,16 +4,21 @@ cd /d %~dp0
 
 :: 2. 檢查是否存在 venv 資料夾 (假設你的虛擬環境資料夾叫 venv)
 if not exist ".venv\Scripts\activate" (
-    echo [錯誤] 找不到 venv 虛擬環境，請確認資料夾名稱是否正確。
+    echo [error] cannot find virtual environment. Please set up the virtual environment first.
     pause
     exit
 )
 
-echo [狀態] 正在啟動虛擬環境...
+echo [system] start venv...
 :: 3. 啟動虛擬環境
 call .venv\Scripts\activate
 
-echo [狀態] 正在啟動 Streamlit 應用程式...
+echo [system] setting environment variables...
+:: 設定環境變數
+set DATA_FOLDER=data
+set DEFAULT_DATA_FILE=default_data/FAQ_Default.xlsx
+
+echo [system] start Streamlit app...
 :: 4. 執行 Streamlit
 streamlit run app.py
 

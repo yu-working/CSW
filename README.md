@@ -18,6 +18,22 @@
 
 ---
 
+## 專案架構
+
+```
+CSW/
+├── app.py           # 主程式
+├── cli.py       # cli系統
+├── start.bat                 # 資料庫插入操作
+├── requirements.txt             # Python 相依套件
+├── Dockerfile                   # Docker 設定檔
+├── .env                         # 環境變數設定
+└── default_data/
+    └── FAQ_Default.xlsx        # 預設問答紀錄文件
+```
+
+---
+
 ## 快速開始
 
 ### 安裝
@@ -45,6 +61,18 @@
 
 4.  **使用服務**
     開啟 `localhost:8501` 檢視服務是否成功啟動
+
+#### 本地網頁
+
+1.  **複製儲存庫 (Clone the repo)**
+    ```bash
+    git clone https://github.com/yu-working/CSAST.git
+    cd CSAST
+    ```
+
+2.  **通過uv建立虛擬環境並安裝套件**
+
+3.  雙擊 `start.bat` 啟動應用
 
 #### 本地CLI
 

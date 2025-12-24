@@ -21,6 +21,10 @@ if not os.path.exists(DEFAULT_FILE):
 ACTIVE_FILE = os.path.join(DATA_FOLDER, "FAQ_Active.xlsx")
 
 MODEL_CONFIG = {
+    "Google Gemini(2.5-flash)": {
+        "env_var": "GEMINI_API_KEY",
+        "model_name": "gemini:gemini-2.5-flash"
+    },
     "OpenAI (GPT-4o)": {
         "env_var": "OPENAI_API_KEY",
         "model_name": "openai:gpt-4o"
@@ -28,10 +32,6 @@ MODEL_CONFIG = {
     "OpenAI (GPT-5)": {
         "env_var": "OPENAI_API_KEY",
         "model_name": "openai:gpt-5"
-    },
-    "Google Gemini(2.5-flash)": {
-        "env_var": "GEMINI_API_KEY",
-        "model_name": "gemini:gemini-2.5-flash"
     },
     "Anthropic Claude": {
         "env_var": "ANTHROPIC_API_KEY",
@@ -172,13 +172,26 @@ system_prompt = f"""
 <角色>你是一名客服人員的專屬助理</角色>
 <任務>
     1. 請先分析提問，是需要一般的問題還是想要從歷史紀錄找出相關資料，如果是一般的問題正常回答即可，如果是想從歷史紀錄找出相關資料，則查找資料中有無類似或相關之資訊。
-    2. 若資料中有相關資訊，請依據歷史回答生成建議的回覆，並在下面條列式整理參考來源，應包含:歷史提問、歷史回答、裝置世代(如有)、類型、流程階段、關鍵字。如有多個相關資訊，請全部條列出來並區隔開來。
+    2. 若資料中有相關資訊，請依據歷史回答生成建議的回覆，並在下面條列式整理參考來源，應包含:歷史提問、歷史回答、裝置世代(如有)、類型、流程階段、關鍵字。如有多個相關資訊，則依照相關度高到低條列並區隔開來。
     3. 若資料中無相關資訊，請分析客戶提問，並給予類型、流程階段(僅包含APP、安裝前、安裝中、安裝後)、關鍵字。
 </任務>
 <限制>
     1. 生成建議的回覆時，需使用``` ```的程式碼區塊包裹
     2. 生成建議的回覆時，需盡可能簡單易懂
     3. 生成建議的回覆時，請只使用中文文字及數字，不得使用粗體、斜體、底線等格式
+    4. 列出參考的歷史來源時，格式應符合:
+        ```
+        ### 參考資料1
+        - 歷史提問
+        - 歷史回答
+        - 裝置世代
+        - 類型
+        - 流程階段
+        - 關鍵字
+        ---
+        ### 參考資料2
+        ...
+        ```
 </限制>
 <資料>{context_text}</資料>
 """

@@ -36,12 +36,29 @@ CSW/
 
 ## 快速開始
 
+### **本地網頁**
+
+1.  **複製儲存庫 (Clone the repo)**
+    ```bash
+    git clone https://github.com/yu-working/CSW.git
+    cd CSW
+    ```
+
+2.  **通過uv建立虛擬環境並安裝套件**
+
+3.  **新增預設檔案**
+    在 `default_data/FAQ_Default.xlsx` 
+
+3.  **雙擊 `start.bat` 啟動應用**
+
+---
+
 ### **SERVER服務**
 
 1.  **複製儲存庫 (Clone the repo)**
     ```bash
-    git clone https://github.com/yu-working/CSAST.git
-    cd CSAST
+    git clone https://github.com/yu-working/CSW.git
+    cd CSW
     ```
 
 2.  **啟動DOCKER並建立image**
@@ -60,72 +77,3 @@ CSW/
 4.  **使用服務**
     開啟 `localhost:8501` 檢視服務是否成功啟動
 
-### **本地網頁**
-
-1.  **複製儲存庫 (Clone the repo)**
-    ```bash
-    git clone https://github.com/yu-working/CSAST.git
-    cd CSAST
-    ```
-
-2.  **通過uv建立虛擬環境並安裝套件**
-
-3.  **新增預設檔案**
-
-3.  **雙擊 `start.bat` 啟動應用**
-
-### **本地CLI**
-
-1.  **複製儲存庫 (Clone the repo)**
-    ```bash
-    git clone https://github.com/yu-working/CSAST.git
-    cd CSAST
-    ```
-
-2.  **安裝依賴項 (Install dependencies)**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3.  **新增環境變數在根目錄**
-    ```
-    GEMINI_API_KEY={your_api_key}
-    MODEL={your_model_name} #e.g. gemini:gemini-2.5-flash
-    DATA_DIR={your_data_xlsx} #default:"data.xlsx"
-    ```
-
-4.  **啟動專案 (Run the project)**
-    ```bash
-    python cli.py
-    ```
-    成功啟動程式後，可以看到:
-    ```bash
-    請問我有什麼可以協助的嗎: 
-    ```
-
-    直接輸入客戶的提問:
-    ```bash
-    請問我有什麼可以協助的嗎: 要怎麼開通
-    ```
-    語言模型會檢索最相似的歷史紀錄並進行回應
-
-    ```
-    Final response:
-    根據您提供的客戶提問「要怎麼開通」，我在參考資料中找到以下相關資訊：
-    *   **歷史提問:** 如何開通？
-    *   **歷史回答:** 先生您好，要麻煩您先填安裝同意書，繳交給物業，等到裝置安裝上後，之後才會進行開通服務。謝謝
-    *   **裝置世代:** RouteB
-    *   **型別:** 開通
-    *   **流程階段:** E管家平臺/APP
-    *   **關鍵字:** 開通, 安裝同意書, 物業, 裝置安裝
-    ```
-
-    退出
-    ```bash
-    請問我有什麼可以協助的嗎: exit
-    #或
-    請問我有什麼可以協助的嗎: quit
-    請問我有什麼可以協助的嗎: e
-    請問我有什麼可以協助的嗎: q
-    ```
-    即可結束程式

@@ -93,9 +93,9 @@ USER_AVATAR = os.path.join(AVATAR_PATH, "user_icon.jpg")
 def read_excel_sheets(file_path):
     if not os.path.exists(file_path):
         return None
-    target_sheets = ["E管家", "智慧插座", "安裝前中後問題"]
     try:
-        return pd.read_excel(file_path, sheet_name=target_sheets)
+        # 自動讀取所有工作表
+        return pd.read_excel(file_path, sheet_name=None)
     except Exception as e:
         st.error(f"讀取 Excel 失敗: {e}")
         return None
@@ -149,9 +149,6 @@ def extract_text_from_pptx(path: str) -> str:
 def df_from_text(text: str, source_label: str) -> pd.DataFrame:
     return pd.DataFrame({"來源": [source_label], "內容": [text]})
 
-# 支援多檔案合併：
-# - xlsx：依既有三個工作表名稱合併
-# - 其他(docx/txt/pdf/pptx)：以檔名為鍵，內容形成單列 DataFrame
 def read_excel_list(file_paths):
     if not file_paths:
         return None
@@ -352,24 +349,28 @@ system_prompt = f"""
 <限制>
     1. 生成建議的回覆時，需使用``` 區塊必須完整開始並完整結束，區塊結束後，後續說明文字請以一般純文字輸出，
     2. 生成建議的回覆時，請只使用中文文字及數字，不得使用粗體、斜體、底線等格式
-    3. 生成建議的回覆時，清楚、耐心、循序地回應用戶提問，而非進行長篇說明或技術細節展示，除非使用者明確要求，否則請避免：
+    3. 生成建議的回覆時，清楚、耐心、循序地回應用戶提問，除非使用者明確要求，否則請避免：
+        - 長篇說明
         - 顯示程式碼
         - 使用專業縮寫、用語
-        - 解釋系統運作原理或展示內部技術
+        - 解釋系統運作原理或展示技術細節
     4. 每次生成建議的回覆時請依照以下流程:
         - 以"親愛的用戶您好:" 開頭
         - 簡要重述用戶問題，若提問資訊過少，則可引導用戶提供更多資訊
-        - 根據提問提供解答或是解決建議
+        - 根據提問提供具體的處理步驟、原因說明或後續行動
         - 以簡短的關心或確認作為結尾
 </限制>
 <回應格式>
     - 參考資料1
+        - {{參考資料文件名稱}}
+        - {{參考資料文件內容}}
 
-    {{參考資料}}
     ---
-    - 參考資料2
 
-    {{參考資料}}
+    - 參考資料2
+        - {{參考資料文件名稱}}
+        - {{參考資料文件內容}}
+
     ---
 
     建議回應:

@@ -429,7 +429,7 @@ system_prompt = f"""
 
 # --- 6. 主介面顯示 ---
 st.title("Customer Service Wingman")
-st.caption("Version: v1.2.3")
+st.caption("Version: v1.3.0")
 
 # 顯示現有的對話紀錄
 for message in st.session_state.messages:

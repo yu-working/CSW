@@ -332,6 +332,45 @@ with st.sidebar:
         names_str = "DEFAULT" if st.session_state.include_default else ""
     st.caption(f"目前生效檔案：{names_str}")
 
+    # 檔案刪除區
+    delete_candidates = st.multiselect("選擇要刪除的檔案", options=available_files)
+    if st.button("刪除選擇檔案"):
+        deleted, failed = [], []
+        for fn in delete_candidates:
+            path = os.path.join(DATA_FOLDER, fn)
+            try:
+                if os.path.isfile(path):
+                    os.remove(path)
+                    deleted.append(fn)
+                else:
+                    failed.append(fn)
+            except Exception:
+                failed.append(fn)
+
+        if deleted:
+            # 從使用名單與已處理名單移除
+            use_list = st.session_state.use_data_name if isinstance(st.session_state.use_data_name, list) else []
+            st.session_state.use_data_name = [f for f in use_list if f not in deleted]
+            processed = st.session_state.processed_files if isinstance(st.session_state.processed_files, list) else []
+            st.session_state.processed_files = [f for f in processed if f not in deleted]
+
+            # 重新載入資料
+            st.cache_data.clear()
+            load_paths = ([DEFAULT_FILE] if st.session_state.include_default else []) + [os.path.join(DATA_FOLDER, f) for f in st.session_state.use_data_name if os.path.exists(os.path.join(DATA_FOLDER, f))]
+            if load_paths:
+                st.session_state.current_data = read_excel_list(load_paths)
+                save_data_state("default" if (st.session_state.include_default and not st.session_state.use_data_name) else "active", st.session_state.use_data_name if st.session_state.use_data_name else ["FAQ_Default.xlsx"])
+            else:
+                st.session_state.include_default = True
+                st.session_state.current_data = read_excel_sheets(DEFAULT_FILE)
+                save_data_state("default", ["FAQ_Default.xlsx"])
+
+            st.success(f"🗑️ 已刪除 {len(deleted)} 個檔案")
+            st.rerun()
+
+        if failed:
+            st.warning(f"無法刪除：{', '.join(failed)}")
+
     # 使用者手動點擊「X」移除檔案時的重置
     if not uploaded_files:
         # 清空上傳控件的已處理名單，允許再次上傳同名檔案
@@ -390,7 +429,7 @@ system_prompt = f"""
 
 # --- 6. 主介面顯示 ---
 st.title("Customer Service Wingman")
-st.caption("Version: v1.2.2")
+st.caption("Version: v1.2.3")
 
 # 顯示現有的對話紀錄
 for message in st.session_state.messages:

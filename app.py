@@ -79,13 +79,14 @@ if "current_data" not in st.session_state:
     st.session_state.current_data = None
 if "file_processed" not in st.session_state:
     st.session_state.file_processed = False
+if "processed_files" not in st.session_state:
+    st.session_state.processed_files = []
 
 # 假設圖片路徑
 AVATAR_PATH = "static"
 CSW_AVATAR = os.path.join(AVATAR_PATH, "csw_icon.jpg")
 USER_AVATAR = os.path.join(AVATAR_PATH, "user_icon.jpg")
 # BOT_AVATAR = "https://your-domain.com/bot-logo.png"
-# 用法
 # with st.chat_message("user", avatar=USER_AVATAR):
 
 # --- 2. 工具函數 ---
@@ -260,25 +261,30 @@ with st.sidebar:
         type=["xlsx", "docx", "txt", "pdf", "pptx"],
         accept_multiple_files=True,
         )
-    if uploaded_files and not st.session_state.get("file_processed", False):
-        saved_names = []
-        for uf in uploaded_files:
-            target_path = os.path.join(DATA_FOLDER, uf.name)
-            with open(target_path, "wb") as f:
-                f.write(uf.getbuffer())
-            saved_names.append(uf.name)
-        # 更新目前的使用清單：保留原有，再加入新檔（去重）
-        existing = st.session_state.use_data_name if isinstance(st.session_state.use_data_name, list) else []
-        new_list = list(dict.fromkeys(existing + saved_names))
-        st.cache_data.clear()
-        paths = ([DEFAULT_FILE] if st.session_state.include_default else []) + [os.path.join(DATA_FOLDER, f) for f in new_list if os.path.exists(os.path.join(DATA_FOLDER, f))]
-        st.session_state.current_data = read_excel_list(paths)
-        st.session_state.file_processed = True
-        st.session_state.use_data_name = new_list if new_list else ["DEFAULT"]
-        st.session_state.include_default = st.session_state.include_default if new_list else True
-        save_data_state("active" if new_list else "default", new_list if new_list else ["FAQ_Default.xlsx"])
-        st.success(f"✅ 已加入 {len(saved_names)} 個檔案")
-        st.rerun()
+    if uploaded_files:
+        # 只處理尚未儲存過的新檔案（以檔名判斷）
+        processed = st.session_state.processed_files if isinstance(st.session_state.processed_files, list) else []
+        new_uploads = [uf for uf in uploaded_files if uf.name not in processed]
+        if new_uploads:
+            saved_names = []
+            for uf in new_uploads:
+                target_path = os.path.join(DATA_FOLDER, uf.name)
+                with open(target_path, "wb") as f:
+                    f.write(uf.getbuffer())
+                saved_names.append(uf.name)
+            # 更新已處理名單
+            st.session_state.processed_files = list(dict.fromkeys(processed + saved_names))
+            # 更新目前的使用清單：保留原有，再加入新檔（去重）
+            existing = st.session_state.use_data_name if isinstance(st.session_state.use_data_name, list) else []
+            new_list = list(dict.fromkeys(existing + saved_names))
+            st.cache_data.clear()
+            paths = ([DEFAULT_FILE] if st.session_state.include_default else []) + [os.path.join(DATA_FOLDER, f) for f in new_list if os.path.exists(os.path.join(DATA_FOLDER, f))]
+            st.session_state.current_data = read_excel_list(paths)
+            st.session_state.use_data_name = new_list if new_list else ["DEFAULT"]
+            st.session_state.include_default = st.session_state.include_default if new_list else True
+            save_data_state("active" if new_list else "default", new_list if new_list else ["FAQ_Default.xlsx"])
+            st.success(f"✅ 已加入 {len(saved_names)} 個檔案")
+            st.rerun()
 
     # 使用預設資料庫選項（checkbox）
     st.session_state.include_default = st.checkbox("使用預設資料庫", value=st.session_state.include_default, help="是否包含預設資料庫")
@@ -327,9 +333,9 @@ with st.sidebar:
     st.caption(f"目前生效檔案：{names_str}")
 
     # 使用者手動點擊「X」移除檔案時的重置
-    if not uploaded_files and st.session_state.file_processed:
-        # 清空當次選取的上傳狀態
-        st.session_state.file_processed = False
+    if not uploaded_files:
+        # 清空上傳控件的已處理名單，允許再次上傳同名檔案
+        st.session_state.processed_files = []
     st.divider()
     
     if st.button("清除對話歷史"):
@@ -384,7 +390,7 @@ system_prompt = f"""
 
 # --- 6. 主介面顯示 ---
 st.title("Customer Service Wingman")
-st.caption("Version: v1.2.0")
+st.caption("Version: v1.2.2")
 
 # 顯示現有的對話紀錄
 for message in st.session_state.messages:

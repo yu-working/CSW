@@ -1,6 +1,7 @@
 .env
 *.zip
 *.xlsx
+*csv
 .venv*
 __pycache__/
 *.pyc

@@ -85,6 +85,8 @@ if "processed_files" not in st.session_state:
     st.session_state.processed_files = []
 if "token_total" not in st.session_state:
     st.session_state.token_total = 0
+if "qa_pairs" not in st.session_state:
+    st.session_state.qa_pairs = []
 
 # 假設圖片路徑
 AVATAR_PATH = "static"
@@ -229,6 +231,17 @@ def compute_tokens_safe(text: str, model_name: str) -> int:
             return max(1, len(text or "") // 4)
         except Exception:
             return 1
+
+def extract_suggestion_from_response(text: str) -> str | None:
+    """從回應中提取 ``` 區塊內的建議回覆。"""
+    if not text:
+        return None
+    # 尋找「建議回應:」後的第一個 ``` 區塊
+    pattern = r"建議回[應应]:\s*```([\s\S]*?)```"
+    match = re.search(pattern, text)
+    if match:
+        return match.group(1).strip()
+    return None
 
 # 定義一個內部函數來把 list 轉回字串，方便計算 Token
 def get_history_string(h_list):
@@ -549,6 +562,63 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 st.caption(
                     f"Token 使用 - 本次: 提示 {in_tokens}, 回覆 {out_tokens}, 總和 {call_tokens}; 累計: {st.session_state.token_total}"
                 )
+
+                # 檢測建議回覆並提供儲存功能
+                suggested = extract_suggestion_from_response(resp_out)
+                if suggested:
+                    with st.expander("💾 儲存到 suggest_history.json", expanded=False):
+                        st.write("檢測到建議回覆，您可以編輯後存入到單一檔案 suggest_history.json（預設為原始建議內容）。")
+                        edited_response = st.text_area(
+                            "編輯建議回覆",
+                            value=suggested,
+                            height=150,
+                            key=f"edit_{len(st.session_state.messages)}"
+                        )
+                        from datetime import datetime
+                        if st.button("💾 以編輯內容追加", key=f"save_edit_{len(st.session_state.messages)}"):
+                            try:
+                                entry = {
+                                    "問題": prompt,
+                                    "建議回覆": edited_response,
+                                    "完整回應": resp_out,
+                                    "時間": datetime.now().isoformat()
+                                }
+                                save_path = os.path.join(project_root, DATA_FOLDER, "suggest_history.json")
+                                # 顯示將要寫入的路徑，方便檢查
+                                st.caption(f"儲存路徑: {save_path}")
+                                # 確保目標資料夾存在
+                                os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                                # 讀取既有資料或建立新清單
+                                try:
+                                    if os.path.exists(save_path):
+                                        with open(save_path, "r", encoding="utf-8") as f:
+                                            data = json.load(f)
+                                        if not isinstance(data, list):
+                                            data = []
+                                    else:
+                                        data = []
+                                except Exception:
+                                    data = []
+                                data.append(entry)
+                                with open(save_path, "w", encoding="utf-8") as f:
+                                    json.dump(data, f, ensure_ascii=False, indent=2)
+                                # 讀回確認並顯示總筆數
+                                try:
+                                    with open(save_path, "r", encoding="utf-8") as f:
+                                        confirm_data = json.load(f)
+                                    count = len(confirm_data) if isinstance(confirm_data, list) else 0
+                                    try:
+                                        size = os.path.getsize(save_path)
+                                        st.success(f"✅ 已追加至：{save_path}（目前共 {count} 筆，檔案大小 {size} bytes）")
+                                    except Exception:
+                                        st.success(f"✅ 已追加至：{save_path}（目前共 {count} 筆）")
+                                except Exception:
+                                    if os.path.exists(save_path):
+                                        st.success(f"✅ 已追加至：{save_path}")
+                                    else:
+                                        st.error("❌ 儲存失敗：檔案未建立。請確認寫入權限或防毒軟體是否阻擋。")
+                            except Exception as e:
+                                st.exception(e)
                 # ====== agent ======= #
 
                 # --- Token 管理與修剪 --- 

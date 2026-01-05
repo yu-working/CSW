@@ -83,6 +83,8 @@ if "file_processed" not in st.session_state:
     st.session_state.file_processed = False
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = []
+if "token_total" not in st.session_state:
+    st.session_state.token_total = 0
 
 # 假設圖片路徑
 AVATAR_PATH = "static"
@@ -217,6 +219,16 @@ def normalize_response_text(text):
     # 壓縮連續 3 行以上空行為 2 行
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text
+
+def compute_tokens_safe(text: str, model_name: str) -> int:
+    try:
+        return ah.myTokenizer.compute_tokens(text or "", model_name)
+    except Exception:
+        # 粗估：以 4 字元≈1 token 估算，至少 1 token
+        try:
+            return max(1, len(text or "") // 4)
+        except Exception:
+            return 1
 
 # 定義一個內部函數來把 list 轉回字串，方便計算 Token
 def get_history_string(h_list):
@@ -402,7 +414,7 @@ with st.sidebar:
 # 確保 context_data 永遠對應到目前選用的資料 (current_data)
 context_text = format_data_for_ai(st.session_state.current_data)
 system_prompt = f"""
-<角色>你是一名客服人員的專屬助理</角色>
+<角色>你是一名客服人員的專屬助理，可協助客服人員查詢客戶資訊與相關資料並生成建議的回覆的服務</角色>
 <任務>
     1. 請先分析提問，是需要查詢客戶資訊或是查詢相關資料:
     2. 若是查詢客戶資訊，則通過呼叫 MCP 工具 get_base_info(username)取得，如果在查詢客戶資訊後，有生成建議的回覆，則將客戶資訊帶入整合，如果沒有，直接顯示查詢到的客戶資訊即可
@@ -417,8 +429,8 @@ system_prompt = f"""
         - 使用專業縮寫、用語
         - 解釋系統運作原理或展示技術細節
     4. 每次生成建議的回覆時請依照以下流程:
-        - 以"XXX您好:" 開頭，若對話歷史中有查詢客戶資訊則將姓名帶入，若沒有則統一稱為使用者
-        - 簡要重述使用者問題，若提問資訊過少，則可引導使用者提供更多資訊
+        - 以"OOO您好:" 開頭，若對話歷史中有查詢客戶資訊則將姓名帶入，若沒有則統一稱為使用者
+        - 簡要重述使用者問題進行確認，若提問資訊過少，資料中亦無類似的問題，則可引導使用者提供更多資訊
         - 根據提問提供具體的處理步驟、原因說明或後續行動
         - 以簡短的關心或確認作為結尾
 </限制>
@@ -453,7 +465,7 @@ system_prompt = f"""
 
 # --- 6. 主介面顯示 ---
 st.title("Customer Service Wingman")
-st.caption("Version: v2.0.0")
+st.caption("Version: v2.1.0")
 
 # 顯示現有的對話紀錄
 for message in st.session_state.messages:
@@ -514,7 +526,7 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 
                 agent = akasha.agents(
                     model=config["model_name"],
-                    temperature=0.1,
+                    temperature=0.7,
                     max_input_tokens=20000,
                     max_output_tokens=20000,
                     verbose=True
@@ -528,6 +540,15 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 response = agent.mcp_agent(connection_info, final_prompt)
                 resp_out = normalize_response_text(response)
                 st.markdown(resp_out)
+
+                # 顯示 token 使用（本次與累計）
+                in_tokens = compute_tokens_safe(final_prompt, config["model_name"])
+                out_tokens = compute_tokens_safe(resp_out, config["model_name"])
+                call_tokens = in_tokens + out_tokens
+                st.session_state.token_total = st.session_state.get("token_total", 0) + call_tokens
+                st.caption(
+                    f"Token 使用 - 本次: 提示 {in_tokens}, 回覆 {out_tokens}, 總和 {call_tokens}; 累計: {st.session_state.token_total}"
+                )
                 # ====== agent ======= #
 
                 # --- Token 管理與修剪 --- 
@@ -538,7 +559,7 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 total_content = system_prompt + prompt + current_h_text
                 
                 # 迴圈修剪
-                while ah.myTokenizer.compute_tokens(total_content, config["model_name"]) > 8000 and len(st.session_state.history_list) > 1:
+                while ah.myTokenizer.compute_tokens(total_content, config["model_name"]) > 20000 and len(st.session_state.history_list) > 1:
                     st.session_state.history_list.pop(0)
                     current_h_text = get_history_string(st.session_state.history_list)
                     total_content = system_prompt + prompt + current_h_text

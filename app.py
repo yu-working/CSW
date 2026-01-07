@@ -10,6 +10,7 @@ from pptx import Presentation
 from pypdf import PdfReader
 import sys
 import re
+from datetime import datetime
 
 
 st.set_page_config(page_title="CSW")
@@ -85,8 +86,8 @@ if "processed_files" not in st.session_state:
     st.session_state.processed_files = []
 if "token_total" not in st.session_state:
     st.session_state.token_total = 0
-if "qa_pairs" not in st.session_state:
-    st.session_state.qa_pairs = []
+if "edit_suggest" not in st.session_state:
+    st.session_state.edit_suggest = ""
 
 # 假設圖片路徑
 AVATAR_PATH = "static"
@@ -237,7 +238,7 @@ def extract_suggestion_from_response(text: str) -> str | None:
     if not text:
         return None
     # 尋找「建議回應:」後的第一個 ``` 區塊
-    pattern = r"建議回[應应]:\s*```([\s\S]*?)```"
+    pattern = r"```([\s\S]*?)```"
     match = re.search(pattern, text)
     if match:
         return match.group(1).strip()
@@ -246,6 +247,29 @@ def extract_suggestion_from_response(text: str) -> str | None:
 # 定義一個內部函數來把 list 轉回字串，方便計算 Token
 def get_history_string(h_list):
     return "".join([f"\n提問: {item['q']}\n回覆: {item['a']}" for item in h_list])
+
+def save_suggestion(save_path):
+    entry = {
+        "問題": st.session_state.last_suggestion_entry["問題"],
+        "建議回覆": st.session_state.edit_suggest,
+        "完整回應": st.session_state.last_suggestion_entry["完整回應"],
+        "時間": st.session_state.last_suggestion_entry["時間"],
+    }
+
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+    data = []
+    if os.path.exists(save_path):
+        with open(save_path, "r", encoding="utf-8") as f:
+            data = json.load(f) or []
+
+    data.append(entry)
+
+    with open(save_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    st.success("✅ 已成功儲存")
+
 
 # --- 3. 初始資料載入邏輯 ---
 # 只有在 current_data 是 None 的時候才去執行讀取，並依照 toggle 狀態決定來源
@@ -506,21 +530,6 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
     with st.chat_message("assistant", avatar=CSW_AVATAR):
         with st.spinner("思考中..."):
             try:
-                # ak = akasha.ask(
-                #     model=config["model_name"],
-                #     temperature=0.1,
-                #     max_input_tokens=20000,
-                #     max_output_tokens=20000
-                # )
-                # history_text = get_history_string(st.session_state.history_list)
-                # final_prompt = (
-                #     system_prompt + 
-                #     f"\n<提問>\n{prompt}\n</提問>" + 
-                #     f"\n<對話歷史>\n{history_text}\n</對話歷史>"
-                # )
-                # response = ak(prompt=final_prompt)
-                # st.markdown(response)
-                # ====== agent ======= #
                 # 使用與目前執行的 Python 同一個解譯器
                 python_cmd = sys.executable or "python"
                 # 以目前檔案位置為基準定位 tools 目錄
@@ -553,6 +562,11 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 response = agent.mcp_agent(connection_info, final_prompt)
                 resp_out = normalize_response_text(response)
                 st.markdown(resp_out)
+                st.session_state.last_suggestion_entry = {
+                    "問題": prompt,
+                    "完整回應": resp_out,
+                    "時間": datetime.now().isoformat()
+                }
 
                 # 顯示 token 使用（本次與累計）
                 in_tokens = compute_tokens_safe(final_prompt, config["model_name"])
@@ -564,62 +578,23 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 )
 
                 # 檢測建議回覆並提供儲存功能
+                save_path = os.path.join(project_root, DATA_FOLDER, "suggest_history.json")
                 suggested = extract_suggestion_from_response(resp_out)
                 if suggested:
-                    with st.expander("💾 儲存到 suggest_history.json", expanded=False):
-                        st.write("檢測到建議回覆，您可以編輯後存入到單一檔案 suggest_history.json（預設為原始建議內容）。")
-                        edited_response = st.text_area(
+                    with st.expander(f"💾 儲存到 {save_path}", expanded=False):
+                        st.text_area(
                             "編輯建議回覆",
                             value=suggested,
                             height=150,
-                            key=f"edit_{len(st.session_state.messages)}"
+                            key="edit_suggest"
                         )
-                        from datetime import datetime
-                        if st.button("💾 以編輯內容追加", key=f"save_edit_{len(st.session_state.messages)}"):
-                            try:
-                                entry = {
-                                    "問題": prompt,
-                                    "建議回覆": edited_response,
-                                    "完整回應": resp_out,
-                                    "時間": datetime.now().isoformat()
-                                }
-                                save_path = os.path.join(project_root, DATA_FOLDER, "suggest_history.json")
-                                # 顯示將要寫入的路徑，方便檢查
-                                st.caption(f"儲存路徑: {save_path}")
-                                # 確保目標資料夾存在
-                                os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                                # 讀取既有資料或建立新清單
-                                try:
-                                    if os.path.exists(save_path):
-                                        with open(save_path, "r", encoding="utf-8") as f:
-                                            data = json.load(f)
-                                        if not isinstance(data, list):
-                                            data = []
-                                    else:
-                                        data = []
-                                except Exception:
-                                    data = []
-                                data.append(entry)
-                                with open(save_path, "w", encoding="utf-8") as f:
-                                    json.dump(data, f, ensure_ascii=False, indent=2)
-                                # 讀回確認並顯示總筆數
-                                try:
-                                    with open(save_path, "r", encoding="utf-8") as f:
-                                        confirm_data = json.load(f)
-                                    count = len(confirm_data) if isinstance(confirm_data, list) else 0
-                                    try:
-                                        size = os.path.getsize(save_path)
-                                        st.success(f"✅ 已追加至：{save_path}（目前共 {count} 筆，檔案大小 {size} bytes）")
-                                    except Exception:
-                                        st.success(f"✅ 已追加至：{save_path}（目前共 {count} 筆）")
-                                except Exception:
-                                    if os.path.exists(save_path):
-                                        st.success(f"✅ 已追加至：{save_path}")
-                                    else:
-                                        st.error("❌ 儲存失敗：檔案未建立。請確認寫入權限或防毒軟體是否阻擋。")
-                            except Exception as e:
-                                st.exception(e)
-                # ====== agent ======= #
+
+                        st.button(
+                            "💾 以編輯內容追加",
+                            key="save_edit_suggest",
+                            on_click=save_suggestion,
+                            kwargs={"save_path": save_path}
+                        )
 
                 # --- Token 管理與修剪 --- 
                 st.session_state.history_list.append({"q": prompt, "a": resp_out})

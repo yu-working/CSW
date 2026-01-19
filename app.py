@@ -518,36 +518,37 @@ with st.sidebar:
             # 讓選擇框預設選中當前生效的對話檔案（若存在）
             active_file = get_chat_active_file()
             active_name = os.path.basename(active_file) if active_file else None
-            # 強制 selectbox 的預設值為目前 active 的檔案
-            try:
-                if active_name and active_name in logs and st.session_state.get("sel_chat_group") != active_name:
-                    st.session_state["sel_chat_group"] = active_name
-            except Exception:
-                pass
             try:
                 default_index = logs.index(active_name) if active_name in logs else 0
             except Exception:
                 default_index = 0
+            # 當使用者變更選擇時才載入（避免初始渲染就載入）
+            def _on_select_chat():
+                try:
+                    sel = st.session_state.get("sel_chat_group")
+                    cur = os.path.basename(get_chat_active_file() or "") or None
+                    if sel and sel != cur:
+                        data = load_chat_log(sel)
+                        if data:
+                            st.session_state.messages = data.get("messages", [])
+                            st.session_state.history_list = data.get("history_list", [])
+                            set_chat_active_file(os.path.join(CHAT_LOGS_FOLDER, sel))
+                except Exception:
+                    pass
             selected_log = st.selectbox(
                 "選擇對話載入",
                 options=logs,
                 index=default_index,
                 format_func=lambda s: s[:-5] if s.lower().endswith(".json") else s,
                 key="sel_chat_group",
+                on_change=_on_select_chat,
             )
+
             preview = load_chat_log(selected_log) or {}
             msg_count = len(preview.get("messages") or [])
             name_display = selected_log[:-5] if selected_log.lower().endswith(".json") else selected_log
             st.caption(f"訊息數：{msg_count} | 檔名：{name_display}")
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("載入對話", key=f"btn_load_{selected_log}"):
-                    data = load_chat_log(selected_log)
-                    if data:
-                        st.session_state.messages = data.get("messages", [])
-                        st.session_state.history_list = data.get("history_list", [])
-                        set_chat_active_file(os.path.join(CHAT_LOGS_FOLDER, selected_log))
-                        st.rerun()
+            c2 = st.columns(1)[0]
             with c2:
                 if st.button("刪除對話", key=f"del_{selected_log}"):
                     try:

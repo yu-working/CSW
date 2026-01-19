@@ -14,6 +14,25 @@ from datetime import datetime
 
 
 st.set_page_config(page_title="CSW")
+# 自訂樣式：讓 Markdown 的程式碼區塊自動換行、避免左右滑動
+st.markdown(
+        """
+        <style>
+        div[data-testid="stMarkdownContainer"] pre {
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            word-break: break-word !important;
+            overflow-x: hidden !important;
+        }
+        div[data-testid="stMarkdownContainer"] code {
+            white-space: pre-wrap !important;
+            word-wrap: break-word !important;
+            word-break: break-word !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+)
 # --- 1. 環境設定 ---
 DATA_FOLDER = os.getenv("DATA_FOLDER", "data")
 DEFAULT_DATA_FILE = os.getenv("DEFAULT_DATA_FILE", "default_data/FAQ_Default.xlsx")
@@ -268,16 +287,88 @@ def extract_suggestion_from_response(text: str) -> str | None:
         return match.group(1).strip()
     return None
 
+def sanitize_filename(name: str) -> str:
+    """移除檔名中的不合法字元，保留英數字、中文、空白、-與_，並壓縮重複空白。"""
+    if not name:
+        return ""
+    # 去除換行與引號等不必要符號
+    name = re.sub(r"[`\"'\r\n]+", " ", name).strip()
+    # 只允許中英文、數字、空白、-、_
+    name = re.sub(r"[^\w\u4e00-\u9fff\s\-]", " ", name)
+    # 壓縮空白
+    name = re.sub(r"\s+", " ", name).strip()
+    # 避免空字串
+    return name[:80] if name else ""
+
+def generate_unique_log_path(base_name: str) -> str:
+    """根據檔名產生唯一的 JSON 檔案路徑（於 CHAT_LOGS_FOLDER 下）。"""
+    base_name = base_name.rstrip(".json")
+    candidate = f"{base_name}.json"
+    path = os.path.join(CHAT_LOGS_FOLDER, candidate)
+    if not os.path.exists(path):
+        return path
+    idx = 2
+    while True:
+        candidate = f"{base_name}-{idx}.json"
+        path = os.path.join(CHAT_LOGS_FOLDER, candidate)
+        if not os.path.exists(path):
+            return path
+        idx += 1
+
+def generate_chat_filename_path(hint: str | None = None) -> str:
+    """使用語言模型產生對話記錄檔名，並回傳唯一的完整路徑。"""
+    try:
+        model_name = config["model_name"]
+        ask_fn = akasha.ask(
+            model=model_name,
+            temperature=1.0,
+            max_input_tokens=2000,
+            max_output_tokens=2000,
+        )
+        prompt = (
+            """
+            <任務>\n
+            請根據「使用者的第一句提問內容」，產生一個適合顯示給一般使用者看的對話紀錄名稱。\n
+            </任務>\n
+            <規則>\n
+            1. 名稱長度限制在 6 至 16 個中文字以內或 30 個英文字以內\n
+            2. 不要出現標點符號、引號或特殊符號\n
+            3. 不要包含日期、時間、編號\n
+            4. 以「問題主題或使用者意圖」作為命名重點\n
+            5. 避免照抄原句，請進行語意摘要或重述\n
+            </規則>\n
+        """
+        )
+        if hint:
+            prompt += f"- 使用者的第一句提問內容：{hint}\n"
+        name_raw = ask_fn(prompt=prompt)
+        name = normalize_response_text(name_raw).strip().splitlines()[0]
+        safe = sanitize_filename(name)
+        if not safe:
+            safe = "對話紀錄"
+        return generate_unique_log_path(safe)
+    except Exception:
+        # LM 失敗時的回退方案
+        return generate_unique_log_path("對話紀錄")
+
 def save_chat_log(create_if_missing: bool = True):
     try:
         path = get_chat_active_file()
         started_at = None
         if not path and create_if_missing:
-            ts = datetime.now()
-            filename = f"{ts.strftime('%Y%m%d_%H%M%S')}.json"
-            path = os.path.join(CHAT_LOGS_FOLDER, filename)
+            # 以語言模型產生檔名，若可用則參考最後一則使用者訊息
+            last_user = None
+            try:
+                msgs = st.session_state.get("messages", []) or []
+                for m in reversed(msgs):
+                    if m.get("role") == "user":
+                        last_user = m.get("content")
+                        break
+            except Exception:
+                pass
+            path = generate_chat_filename_path(last_user)
             set_chat_active_file(path)
-            started_at = ts.isoformat()
+            started_at = datetime.now().isoformat()
 
         if not path:
             return None
@@ -323,18 +414,13 @@ def load_chat_log(file_name: str):
         return None
 
 def start_new_conversation():
-    ts = datetime.now()
-    filename = f"{ts.strftime('%Y%m%d_%H%M%S')}.json"
-    path = os.path.join(CHAT_LOGS_FOLDER, filename)
-    set_chat_active_file(path)
+    """開始新對話但不立即建立檔案；於首次訊息回覆時才建立記錄。"""
+    # 清空目前的訊息與歷史
     st.session_state.messages = []
     st.session_state.history_list = []
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"started_at": ts.isoformat(), "messages": [], "history_list": []}, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-    return path
+    # 清除目前的對話檔案指標
+    set_chat_active_file("")
+    return None
 
 # 定義一個內部函數來把 list 轉回字串，方便計算 Token
 def get_history_string(h_list):
@@ -382,7 +468,7 @@ if st.session_state.current_data is None:
 
 # --- 4. Streamlit 側邊欄介面設定 ---
 with st.sidebar:
-    with st.expander("模型與 API 設定（可摺疊）", expanded=True):
+    with st.expander("模型與 API 設定", expanded=True):
         # 1.下拉式選單選擇模型
         selected_model_display = st.selectbox("選擇模型來源",options=list(MODEL_CONFIG.keys()))
         # 取得對應的配置
@@ -415,7 +501,12 @@ with st.sidebar:
     # 對話組管理
     with st.expander("對話組", expanded=False):
         current_file = get_chat_active_file()
-        current_name = os.path.basename(current_file) if current_file else "尚未選擇"
+        current_name_raw = os.path.basename(current_file) if current_file else "尚未選擇"
+        current_name = (
+            current_name_raw[:-5]
+            if isinstance(current_name_raw, str) and current_name_raw.lower().endswith(".json")
+            else current_name_raw
+        )
         st.caption(f"目前對話檔案：{current_name}")
 
         if st.button("開啟新對話", key="btn_new_conversation"):
@@ -424,10 +515,30 @@ with st.sidebar:
 
         logs = list_chat_logs()
         if logs:
-            selected_log = st.selectbox("選擇對話載入", options=logs, index=0, key="sel_chat_group")
+            # 讓選擇框預設選中當前生效的對話檔案（若存在）
+            active_file = get_chat_active_file()
+            active_name = os.path.basename(active_file) if active_file else None
+            # 強制 selectbox 的預設值為目前 active 的檔案
+            try:
+                if active_name and active_name in logs and st.session_state.get("sel_chat_group") != active_name:
+                    st.session_state["sel_chat_group"] = active_name
+            except Exception:
+                pass
+            try:
+                default_index = logs.index(active_name) if active_name in logs else 0
+            except Exception:
+                default_index = 0
+            selected_log = st.selectbox(
+                "選擇對話載入",
+                options=logs,
+                index=default_index,
+                format_func=lambda s: s[:-5] if s.lower().endswith(".json") else s,
+                key="sel_chat_group",
+            )
             preview = load_chat_log(selected_log) or {}
             msg_count = len(preview.get("messages") or [])
-            st.caption(f"訊息數：{msg_count} | 檔名：{selected_log}")
+            name_display = selected_log[:-5] if selected_log.lower().endswith(".json") else selected_log
+            st.caption(f"訊息數：{msg_count} | 檔名：{name_display}")
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("載入對話", key=f"btn_load_{selected_log}"):
@@ -438,46 +549,27 @@ with st.sidebar:
                         set_chat_active_file(os.path.join(CHAT_LOGS_FOLDER, selected_log))
                         st.rerun()
             with c2:
-                st.download_button(
-                    label="下載對話",
-                    data=json.dumps(preview, ensure_ascii=False, indent=2),
-                    file_name=selected_log,
-                    mime="application/json",
-                    key=f"dl_{selected_log}"
-                )
+                if st.button("刪除對話", key=f"del_{selected_log}"):
+                    try:
+                        target = os.path.join(CHAT_LOGS_FOLDER, selected_log)
+                        if os.path.exists(target):
+                            os.remove(target)
+                            # 若刪除的是當前對話檔案，重置當前對話狀態
+                            current_file = get_chat_active_file()
+                            if current_file and os.path.basename(current_file) == selected_log:
+                                set_chat_active_file("")
+                                st.session_state.messages = []
+                                st.session_state.history_list = []
+                            st.success(f"🗑️ 已刪除對話：{selected_log}")
+                            st.rerun()
+                        else:
+                            st.warning("找不到檔案，可能已被刪除或移動。")
+                    except Exception as e:
+                        st.error(f"刪除失敗：{e}")
         else:
             st.caption("尚無對話記錄。建立新對話即可開始。")
 
-    # 3.資料上傳
-    uploaded_files = st.file_uploader(
-        "上傳更新資料 (xlsx/docx/txt/pdf/pptx)", 
-        type=["xlsx", "docx", "txt", "pdf", "pptx"],
-        accept_multiple_files=True,
-        )
-    if uploaded_files:
-        # 只處理尚未儲存過的新檔案（以檔名判斷）
-        processed = st.session_state.processed_files if isinstance(st.session_state.processed_files, list) else []
-        new_uploads = [uf for uf in uploaded_files if uf.name not in processed]
-        if new_uploads:
-            saved_names = []
-            for uf in new_uploads:
-                target_path = os.path.join(DATA_FOLDER, uf.name)
-                with open(target_path, "wb") as f:
-                    f.write(uf.getbuffer())
-                saved_names.append(uf.name)
-            # 更新已處理名單
-            st.session_state.processed_files = list(dict.fromkeys(processed + saved_names))
-            # 更新目前的使用清單：保留原有，再加入新檔（去重）
-            existing = st.session_state.use_data_name if isinstance(st.session_state.use_data_name, list) else []
-            new_list = list(dict.fromkeys(existing + saved_names))
-            st.cache_data.clear()
-            paths = ([DEFAULT_FILE] if st.session_state.include_default else []) + [os.path.join(DATA_FOLDER, f) for f in new_list if os.path.exists(os.path.join(DATA_FOLDER, f))]
-            st.session_state.current_data = read_excel_list(paths)
-            st.session_state.use_data_name = new_list if new_list else ["DEFAULT"]
-            st.session_state.include_default = st.session_state.include_default if new_list else True
-            save_data_state("active" if new_list else "default", new_list if new_list else ["FAQ_Default.xlsx"])
-            st.success(f"✅ 已加入 {len(saved_names)} 個檔案")
-            st.rerun()
+    # 3.資料上傳（合併至摺疊區塊內）
 
     # 使用預設資料庫選項與檔案勾選（摺疊區塊）
     # 列出可用檔案並提供勾選
@@ -492,7 +584,42 @@ with st.sidebar:
         except Exception:
             return []
 
-    with st.expander("選擇生效檔案（可摺疊）", expanded=False):
+    with st.expander("選擇生效檔案與刪除", expanded=False):
+        # 上傳更新資料
+        uploaded_files = st.file_uploader(
+            "上傳更新資料 (xlsx/docx/txt/pdf/pptx)", 
+            type=["xlsx", "docx", "txt", "pdf", "pptx"],
+            accept_multiple_files=True,
+            )
+        if uploaded_files:
+            # 只處理尚未儲存過的新檔案（以檔名判斷）
+            processed = st.session_state.processed_files if isinstance(st.session_state.processed_files, list) else []
+            new_uploads = [uf for uf in uploaded_files if uf.name not in processed]
+            if new_uploads:
+                saved_names = []
+                for uf in new_uploads:
+                    target_path = os.path.join(DATA_FOLDER, uf.name)
+                    with open(target_path, "wb") as f:
+                        f.write(uf.getbuffer())
+                    saved_names.append(uf.name)
+                # 更新已處理名單
+                st.session_state.processed_files = list(dict.fromkeys(processed + saved_names))
+                # 更新目前的使用清單：保留原有，再加入新檔（去重）
+                existing = st.session_state.use_data_name if isinstance(st.session_state.use_data_name, list) else []
+                new_list = list(dict.fromkeys(existing + saved_names))
+                st.cache_data.clear()
+                paths = ([DEFAULT_FILE] if st.session_state.include_default else []) + [os.path.join(DATA_FOLDER, f) for f in new_list if os.path.exists(os.path.join(DATA_FOLDER, f))]
+                st.session_state.current_data = read_excel_list(paths)
+                st.session_state.use_data_name = new_list if new_list else ["DEFAULT"]
+                st.session_state.include_default = st.session_state.include_default if new_list else True
+                save_data_state("active" if new_list else "default", new_list if new_list else ["FAQ_Default.xlsx"])
+                st.success(f"✅ 已加入 {len(saved_names)} 個檔案")
+                st.rerun()
+
+        # 使用者手動點擊「X」移除檔案時的重置
+        if not uploaded_files:
+            # 清空上傳控件的已處理名單，允許再次上傳同名檔案
+            st.session_state.processed_files = []
         st.session_state.include_default = st.checkbox("使用預設資料庫", value=st.session_state.include_default, help="是否包含預設資料庫")
 
         available_files = list_available_files()
@@ -502,34 +629,20 @@ with st.sidebar:
             if checked:
                 selected.append(fn)
 
-    # 若選擇與現狀不同，更新資料與狀態檔
-    if set(selected) != set(st.session_state.use_data_name or [] ) or st.session_state.current_data is None:
-        st.session_state.use_data_name = selected
-        st.cache_data.clear()
-        load_paths = ([DEFAULT_FILE] if st.session_state.include_default else []) + [os.path.join(DATA_FOLDER, f) for f in selected]
-        if load_paths:
-            st.session_state.current_data = read_excel_list(load_paths)
-            save_data_state("default" if (st.session_state.include_default and not selected) else "active", selected)
-        else:
-            # 無選擇時載入預設
-            st.session_state.include_default = True
-            st.session_state.current_data = read_excel_sheets(DEFAULT_FILE)
-            save_data_state("default", ["FAQ_Default.xlsx"])
+        # 顯示目前生效檔案
+        try:
+            names_list = (selected or [])
+            if st.session_state.include_default:
+                names_list = ["DEFAULT"] + names_list
+            names_str = ", ".join(names_list)
+        except Exception:
+            names_str = "DEFAULT" if st.session_state.include_default else ""
+        st.caption(f"目前生效檔案：{names_str}")
 
-    # 顯示目前檔案資訊
-    try:
-        names_list = (st.session_state.use_data_name or [])
-        if st.session_state.include_default:
-            names_list = ["DEFAULT"] + names_list
-        names_str = ", ".join(names_list)
-    except Exception:
-        names_str = "DEFAULT" if st.session_state.include_default else ""
-    st.caption(f"目前生效檔案：{names_str}")
-
-    # 檔案刪除區
-    with st.expander("檔案刪除", expanded=False):
-        delete_candidates = st.multiselect("選擇要刪除的檔案", options=available_files)
-        if st.button("刪除選擇檔案"):
+        st.divider()
+        # 檔案刪除區（合併於此摺疊）
+        delete_candidates = st.multiselect("選擇要刪除的檔案", options=available_files, key="del_candidates")
+        if st.button("刪除選擇檔案", key="btn_delete_files"):
             deleted, failed = [], []
             for fn in delete_candidates:
                 path = os.path.join(DATA_FOLDER, fn)
@@ -566,10 +679,23 @@ with st.sidebar:
             if failed:
                 st.warning(f"無法刪除：{', '.join(failed)}")
 
-    # 使用者手動點擊「X」移除檔案時的重置
-    if not uploaded_files:
-        # 清空上傳控件的已處理名單，允許再次上傳同名檔案
-        st.session_state.processed_files = []
+    # 若選擇與現狀不同，更新資料與狀態檔
+    if set(selected) != set(st.session_state.use_data_name or [] ) or st.session_state.current_data is None:
+        st.session_state.use_data_name = selected
+        st.cache_data.clear()
+        load_paths = ([DEFAULT_FILE] if st.session_state.include_default else []) + [os.path.join(DATA_FOLDER, f) for f in selected]
+        if load_paths:
+            st.session_state.current_data = read_excel_list(load_paths)
+            save_data_state("default" if (st.session_state.include_default and not selected) else "active", selected)
+        else:
+            # 無選擇時載入預設
+            st.session_state.include_default = True
+            st.session_state.current_data = read_excel_sheets(DEFAULT_FILE)
+            save_data_state("default", ["FAQ_Default.xlsx"])
+
+    # （已合併）
+
+    # （移至摺疊區塊內）
 
 # --- 5. 生成 System Prompt ---
 # 確保 context_data 永遠對應到目前選用的資料 (current_data)
@@ -735,7 +861,11 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
 
                 # 存回 messages 用於顯示
                 st.session_state.messages.append({"role": "assistant", "content": resp_out})
-                # 自動儲存對話紀錄
-                save_chat_log(create_if_missing=True)
+                # 自動儲存對話紀錄（首次訊息時建立檔案）
+                prev_active = get_chat_active_file()
+                new_path = save_chat_log(create_if_missing=True)
+                # 若為第一次建立新對話檔案，重新整理以刷新側邊欄列表與預設選取
+                if not prev_active and new_path:
+                    st.rerun()
             except Exception as e:
                 st.error(f"模型呼叫失敗: {str(e)}")

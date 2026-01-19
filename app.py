@@ -514,9 +514,37 @@ with st.sidebar:
             msg_count = len(preview.get("messages") or [])
             name_display = selected_log[:-5] if selected_log.lower().endswith(".json") else selected_log
             st.caption(f"訊息數：{msg_count} | 檔名：{name_display}")
-            c2 = st.columns(1)[0]
-            with c2:
-                if st.button("刪除對話", key=f"del_{selected_log}"):
+            # 更名（上）
+            new_name_default = name_display
+            new_name = st.text_input(
+                "重新命名對話",
+                value=new_name_default,
+                key=f"rename_input_{selected_log}"
+            )
+            if st.button("確認重新命名對話", key=f"btn_rename_{selected_log}"):
+                try:
+                    base = sanitize_filename(new_name)
+                    if not base:
+                        st.warning("請輸入有效的名稱（僅中英文、數字、空白、-或_）。")
+                    else:
+                        src = os.path.join(CHAT_LOGS_FOLDER, selected_log)
+                        dst = generate_unique_log_path(base)
+                        if src == dst:
+                            st.info("名稱未變更。")
+                        else:
+                            os.rename(src, dst)
+                            # 若目前為活躍對話則更新指向
+                            active_file = get_chat_active_file()
+                            if active_file and os.path.basename(active_file) == selected_log:
+                                set_chat_active_file(dst)
+                            st.success(f"✅ 已更名為：{os.path.basename(dst)[:-5]}")
+                            st.rerun()
+                except Exception as e:
+                    st.error(f"更名失敗：{e}")
+
+            # 刪除（下）
+            st.caption("刪除目前對話紀錄")
+            if st.button("刪除目前對話紀錄", key=f"del_{selected_log}", help="注意：刪除後無法復原！", type="primary"):
                     try:
                         target = os.path.join(CHAT_LOGS_FOLDER, selected_log)
                         if os.path.exists(target):
@@ -609,7 +637,7 @@ with st.sidebar:
         st.divider()
         # 檔案刪除區（合併於此摺疊）
         delete_candidates = st.multiselect("選擇要刪除的檔案", options=available_files, key="del_candidates")
-        if st.button("刪除選擇檔案", key="btn_delete_files"):
+        if st.button("刪除選擇檔案", key="btn_delete_files", help="注意：刪除後無法復原！", type="primary"):
             deleted, failed = [], []
             for fn in delete_candidates:
                 path = os.path.join(DATA_FOLDER, fn)
@@ -683,7 +711,7 @@ system_prompt = f"""
         - 使用專業縮寫、用語
         - 解釋系統運作原理或展示技術細節
     4. 每次生成建議的回覆時請依照以下流程:
-        - 以"OOO您好:" 開頭，若對話歷史中有查詢客戶資訊則將姓名帶入，若沒有則統一稱為使用者
+        - 以"OOO您好:" 開頭，若對話歷史中有查詢客戶資訊則將客戶姓名帶入，若沒有則統一稱為使用者
         - 簡要重述使用者問題進行確認，若提問資訊過少，資料中亦無類似的問題，則可引導使用者提供更多資訊
         - 根據提問提供具體的處理步驟、原因說明或後續行動
         - 以簡短的關心或確認作為結尾

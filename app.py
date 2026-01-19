@@ -127,10 +127,6 @@ if "current_data" not in st.session_state:
     st.session_state.current_data = None
 if "processed_files" not in st.session_state:
     st.session_state.processed_files = []
-if "token_total" not in st.session_state:
-    st.session_state.token_total = 0
-if "edit_suggest" not in st.session_state:
-    st.session_state.edit_suggest = ""
 
 # 假設圖片路徑
 AVATAR_PATH = "static"
@@ -265,16 +261,6 @@ def normalize_response_text(text):
     # 壓縮連續 3 行以上空行為 2 行
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text
-
-def compute_tokens_safe(text: str, model_name: str) -> int:
-    try:
-        return ah.myTokenizer.compute_tokens(text or "", model_name)
-    except Exception:
-        # 粗估：以 4 字元≈1 token 估算，至少 1 token
-        try:
-            return max(1, len(text or "") // 4)
-        except Exception:
-            return 1
 
 def sanitize_filename(name: str) -> str:
     """移除檔名中的不合法字元，保留英數字、中文、空白、-與_，並壓縮重複空白。"""
@@ -747,7 +733,7 @@ system_prompt = f"""
 
 # --- 6. 主介面顯示 ---
 st.title("Customer Service Wingman")
-st.caption("Version: v2.1.0")
+st.caption("Version: v2.2.0")
 
 # 顯示現有的對話紀錄
 for message in st.session_state.messages:
@@ -807,15 +793,6 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 response = agent.mcp_agent(connection_info, final_prompt)
                 resp_out = normalize_response_text(response)
                 st.markdown(resp_out)
-
-                # 顯示 token 使用（本次與累計）
-                in_tokens = compute_tokens_safe(final_prompt, config["model_name"])
-                out_tokens = compute_tokens_safe(resp_out, config["model_name"])
-                call_tokens = in_tokens + out_tokens
-                st.session_state.token_total = st.session_state.get("token_total", 0) + call_tokens
-                st.caption(
-                    f"Token 使用 - 本次: 提示 {in_tokens}, 回覆 {out_tokens}, 總和 {call_tokens}; 累計: {st.session_state.token_total}"
-                )
 
                 # --- Token 管理與修剪 --- 
                 st.session_state.history_list.append({"q": prompt, "a": resp_out})

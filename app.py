@@ -276,17 +276,6 @@ def compute_tokens_safe(text: str, model_name: str) -> int:
         except Exception:
             return 1
 
-def extract_suggestion_from_response(text: str) -> str | None:
-    """從回應中提取 ``` 區塊內的建議回覆。"""
-    if not text:
-        return None
-    # 尋找「建議回應:」後的第一個 ``` 區塊
-    pattern = r"```([\s\S]*?)```"
-    match = re.search(pattern, text)
-    if match:
-        return match.group(1).strip()
-    return None
-
 def sanitize_filename(name: str) -> str:
     """移除檔名中的不合法字元，保留英數字、中文、空白、-與_，並壓縮重複空白。"""
     if not name:
@@ -328,7 +317,7 @@ def generate_chat_filename_path(hint: str | None = None) -> str:
         prompt = (
             """
             <任務>\n
-            請根據「使用者的第一句提問內容」，產生一個適合顯示給一般使用者看的對話紀錄名稱。\n
+            請根據使用者向系統的第一句提問內容，產生一個適合顯示給一般使用者看的對話紀錄名稱。\n
             </任務>\n
             <規則>\n
             1. 名稱長度限制在 6 至 16 個中文字以內或 30 個英文字以內\n
@@ -425,29 +414,6 @@ def start_new_conversation():
 # 定義一個內部函數來把 list 轉回字串，方便計算 Token
 def get_history_string(h_list):
     return "".join([f"\n提問: {item['q']}\n回覆: {item['a']}" for item in h_list])
-
-def save_suggestion(save_path):
-    entry = {
-        "問題": st.session_state.last_suggestion_entry["問題"],
-        "建議回覆": st.session_state.edit_suggest,
-        "完整回應": st.session_state.last_suggestion_entry["完整回應"],
-        "時間": st.session_state.last_suggestion_entry["時間"],
-    }
-
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-    data = []
-    if os.path.exists(save_path):
-        with open(save_path, "r", encoding="utf-8") as f:
-            data = json.load(f) or []
-
-    data.append(entry)
-
-    with open(save_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    st.success("✅ 已成功儲存")
-
 
 # --- 3. 初始資料載入邏輯 ---
 # 只有在 current_data 是 None 的時候才去執行讀取，並依照 toggle 狀態決定來源
@@ -813,11 +779,6 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 response = agent.mcp_agent(connection_info, final_prompt)
                 resp_out = normalize_response_text(response)
                 st.markdown(resp_out)
-                st.session_state.last_suggestion_entry = {
-                    "問題": prompt,
-                    "完整回應": resp_out,
-                    "時間": datetime.now().isoformat()
-                }
 
                 # 顯示 token 使用（本次與累計）
                 in_tokens = compute_tokens_safe(final_prompt, config["model_name"])
@@ -827,25 +788,6 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 st.caption(
                     f"Token 使用 - 本次: 提示 {in_tokens}, 回覆 {out_tokens}, 總和 {call_tokens}; 累計: {st.session_state.token_total}"
                 )
-
-                # 檢測建議回覆並提供儲存功能
-                save_path = os.path.join(project_root, DATA_FOLDER, "suggest_history.json")
-                suggested = extract_suggestion_from_response(resp_out)
-                if suggested:
-                    with st.expander(f"💾 儲存到 {save_path}", expanded=False):
-                        st.text_area(
-                            "編輯建議回覆",
-                            value=suggested,
-                            height=150,
-                            key="edit_suggest"
-                        )
-
-                        st.button(
-                            "💾 以編輯內容追加",
-                            key="save_edit_suggest",
-                            on_click=save_suggestion,
-                            kwargs={"save_path": save_path}
-                        )
 
                 # --- Token 管理與修剪 --- 
                 st.session_state.history_list.append({"q": prompt, "a": resp_out})

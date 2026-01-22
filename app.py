@@ -467,37 +467,48 @@ with st.sidebar:
             start_new_conversation()
             st.rerun()
 
-        logs = list_chat_logs()
-        if logs:
-            # 讓選擇框預設選中當前生效的對話檔案（若存在）
-            active_file = get_chat_active_file()
-            active_name = os.path.basename(active_file) if active_file else None
-            try:
-                default_index = logs.index(active_name) if active_name in logs else 0
-            except Exception:
-                default_index = 0
-            # 當使用者變更選擇時才載入（避免初始渲染就載入）
-            def _on_select_chat():
-                try:
-                    sel = st.session_state.get("sel_chat_group")
-                    cur = os.path.basename(get_chat_active_file() or "") or None
-                    if sel and sel != cur:
-                        data = load_chat_log(sel)
-                        if data:
-                            st.session_state.messages = data.get("messages", [])
-                            st.session_state.history_list = data.get("history_list", [])
-                            set_chat_active_file(os.path.join(CHAT_LOGS_FOLDER, sel))
-                except Exception:
-                    pass
-            selected_log = st.selectbox(
-                "選擇對話載入",
-                options=logs,
-                index=default_index,
-                format_func=lambda s: s[:-5] if s.lower().endswith(".json") else s,
-                key="sel_chat_group",
-                on_change=_on_select_chat,
-            )
+        logs_real = list_chat_logs()
+        NONE_OPTION = "__NONE__"
+        options = [NONE_OPTION] + logs_real
 
+        # 讓選擇框同步目前活躍對話；若無則選擇占位項
+        active_file = get_chat_active_file()
+        active_name = os.path.basename(active_file) if active_file else None
+        desired_selection = active_name if (active_name and active_name in logs_real) else NONE_OPTION
+        try:
+            cur_sel = st.session_state.get("sel_chat_group")
+            if (not cur_sel) or (cur_sel not in options) or (cur_sel == NONE_OPTION and desired_selection != NONE_OPTION):
+                st.session_state["sel_chat_group"] = desired_selection
+        except Exception:
+            pass
+
+        # 當使用者變更選擇時才載入（避免初始渲染就載入）
+        def _on_select_chat():
+            try:
+                sel = st.session_state.get("sel_chat_group")
+                if sel == NONE_OPTION:
+                    # 清除活躍檔案指標，但不動現有畫面訊息
+                    set_chat_active_file("")
+                    return
+                cur = os.path.basename(get_chat_active_file() or "") or None
+                if sel and sel != cur:
+                    data = load_chat_log(sel)
+                    if data:
+                        st.session_state.messages = data.get("messages", [])
+                        st.session_state.history_list = data.get("history_list", [])
+                        set_chat_active_file(os.path.join(CHAT_LOGS_FOLDER, sel))
+            except Exception:
+                pass
+
+        selected_log = st.selectbox(
+            "選擇對話載入",
+            options=options,
+            format_func=lambda s: ("（未選擇）" if s == NONE_OPTION else (s[:-5] if s.lower().endswith(".json") else s)),
+            key="sel_chat_group",
+            on_change=_on_select_chat,
+        )
+
+        if selected_log and selected_log != NONE_OPTION:
             preview = load_chat_log(selected_log) or {}
             msg_count = len(preview.get("messages") or [])
             name_display = selected_log[:-5] if selected_log.lower().endswith(".json") else selected_log
@@ -533,24 +544,24 @@ with st.sidebar:
             # 刪除（下）
             st.caption("刪除目前對話紀錄")
             if st.button("刪除目前對話紀錄", key=f"del_{selected_log}", help="注意：刪除後無法復原！", type="primary"):
-                    try:
-                        target = os.path.join(CHAT_LOGS_FOLDER, selected_log)
-                        if os.path.exists(target):
-                            os.remove(target)
-                            # 若刪除的是當前對話檔案，重置當前對話狀態
-                            current_file = get_chat_active_file()
-                            if current_file and os.path.basename(current_file) == selected_log:
-                                set_chat_active_file("")
-                                st.session_state.messages = []
-                                st.session_state.history_list = []
-                            st.success(f"🗑️ 已刪除對話：{selected_log}")
-                            st.rerun()
-                        else:
-                            st.warning("找不到檔案，可能已被刪除或移動。")
-                    except Exception as e:
-                        st.error(f"刪除失敗：{e}")
+                try:
+                    target = os.path.join(CHAT_LOGS_FOLDER, selected_log)
+                    if os.path.exists(target):
+                        os.remove(target)
+                        # 若刪除的是當前對話檔案，重置當前對話狀態
+                        current_file = get_chat_active_file()
+                        if current_file and os.path.basename(current_file) == selected_log:
+                            set_chat_active_file("")
+                            st.session_state.messages = []
+                            st.session_state.history_list = []
+                        st.success(f"🗑️ 已刪除對話：{selected_log}")
+                        st.rerun()
+                    else:
+                        st.warning("找不到檔案，可能已被刪除或移動。")
+                except Exception as e:
+                    st.error(f"刪除失敗：{e}")
         else:
-            st.caption("尚無對話記錄。建立新對話即可開始。")
+            st.caption("尚未選擇對話。您可以從下拉選單選擇或開啟新對話。")
 
     # 3.資料上傳（合併至摺疊區塊內）
 

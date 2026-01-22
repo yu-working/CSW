@@ -208,13 +208,15 @@ def read_excel_list(file_paths):
             if not data:
                 continue
             for sheet_name, df in data.items():
-                if sheet_name in combined:
+                # 保留原始檔案名稱 + 工作表名稱，避免不同檔案同名工作表混合
+                key = f"{base}::{sheet_name}"
+                if key in combined:
                     try:
-                        combined[sheet_name] = pd.concat([combined[sheet_name], df], ignore_index=True)
+                        combined[key] = pd.concat([combined[key], df], ignore_index=True)
                     except Exception as e:
                         st.error(f"合併工作表 {sheet_name} 失敗: {e}")
                 else:
-                    combined[sheet_name] = df
+                    combined[key] = df
         elif ext == ".docx":
             text = extract_text_from_docx(p)
             df = df_from_text(text, base)
@@ -244,7 +246,7 @@ def format_data_for_ai(data_dict):
     if not data_dict: return "目前無參考資料。"
     full_text = ""
     for name, df in data_dict.items():
-        full_text += f"\n--- {name} 知識庫 ---\n"
+        full_text += f"\n--- {name} ---\n"
         full_text += df.to_csv(index=False)
     return full_text
 
@@ -684,25 +686,40 @@ context_text = format_data_for_ai(st.session_state.current_data)
 system_prompt = f"""
 <角色>你是一名客服人員的專屬助理，可協助客服人員查詢客戶資訊與相關資料並生成建議的回覆的服務</角色>
 <任務>
-    1. 請先分析提問，是需要查詢客戶資訊或是查詢相關資料:
-    2. 若是查詢客戶資訊，則通過呼叫 MCP 工具 get_base_info(username)取得，如果在查詢客戶資訊後，有生成建議的回覆，則將客戶資訊帶入整合，如果沒有，直接顯示查詢到的客戶資訊即可
-    3. 若是查詢相關資料，則查找資料中有無類似或相關之資訊。若資料中有相關資訊，請根據資訊生成建議客服人員可以回應客戶的回覆。如有多個相關資訊，則依照相關度高到低條列並區隔開來。
+    1. 請先辨識提問，是來自客服人員的提問，還是屬於用戶的提問：
+        - 若是來自客服人員的提問，請根據提問內容決定是查詢客戶資訊，還是查詢相關資料，並根據查詢結果生成建議的回覆。
+        - 若是來自客戶的提問，請根據<對話歷史>中是否有查詢過客戶資訊，若有，則將客戶姓名帶入回覆中；若沒有，則統一稱為「使用者」，並根據提問內容生成建議的回覆。
+    2. 若是查詢客戶資訊，請呼叫 MCP 工具 get_base_info(username) 取得；若在查詢後有生成建議回覆，則將客戶資訊帶入整合；若沒有，直接顯示查詢到的客戶資訊即可。
+    3. 若是查詢相關資料，請先使用<資料>（知識庫）內容。若<對話歷史>與<資料>不足以回答，才呼叫工具 get_chat_history_tool 以目前提問抽取的 2–4 個關鍵詞檢索「其他對話」，限制回傳筆數（建議 ≤10），並僅摘錄必要重點。
 </任務>
+<資料來源與分層>
+    1. 優先依據<對話歷史>與<資料>回答。
+    2. 其他對話僅作為參考，不代表本次使用者；若與<對話歷史>矛盾，一律以<對話歷史>為準，並簡要說明矛盾點。
+    3. 若引用其他對話，請在回覆中加入「其他對話參考」區塊，逐點列出：[file: 檔名] + 80–200 字摘要 + 與本題的關聯理由。
+</資料來源與分層>
 <限制>
-    1. 生成建議的回覆時，需使用``` 區塊必須完整開始並完整結束，區塊結束後，後續說明文字請以一般純文字輸出，
-    2. 生成建議的回覆時，請只使用中文文字及數字，不得使用粗體、斜體、底線等格式
+    1. 生成建議的回覆時，需使用``` 區塊必須完整開始並完整結束，區塊結束後，後續說明文字請以一般純文字輸出。
+    2. 生成建議的回覆時，請只使用中文文字及數字，不得使用粗體、斜體、底線等格式。
     3. 生成建議的回覆時，清楚、耐心、循序地回應使用者提問，除非使用者明確要求，否則請避免：
         - 長篇說明
         - 顯示程式碼
         - 使用專業縮寫、用語
         - 解釋系統運作原理或展示技術細節
-    4. 每次生成建議的回覆時請依照以下流程:
-        - 以"OOO您好:" 開頭，若對話歷史中有查詢客戶資訊則將客戶姓名帶入，若沒有則統一稱為使用者
-        - 簡要重述使用者問題進行確認，若提問資訊過少，資料中亦無類似的問題，則可引導使用者提供更多資訊
-        - 根據提問提供具體的處理步驟、原因說明或後續行動
-        - 以簡短的關心或確認作為結尾
+    4. 每次生成建議的回覆時請依照以下流程：
+        - 以"OOO您好:" 開頭，若<對話歷史>中有查詢客戶資訊則將客戶姓名帶入，若沒有則統一稱為使用者。
+        - 簡要重述使用者問題進行確認，若提問資訊過少，資料中亦無類似的問題，則可引導使用者提供更多資訊。
+        - 根據提問提供具體的處理步驟、原因說明或後續行動。
+        - 以簡短的關心或確認作為結尾。
+    5. 引用其他對話時，不得等同於本次使用者；不得大量貼上原文，需做摘要；每點≤200字。
+    6. 除非本次僅為「查詢客戶資訊」並依<查詢客戶資訊回應格式>作答，否則回覆必須在「生成建議回覆回應格式」中列出至少一則參考資料；參考資料來源優先使用<資料>（知識庫），其次可引用「其他對話參考」中的內容，且每則需標示文件名稱與摘錄內容。
 </限制>
 <生成建議回覆回應格式>
+    其他對話參考（如有）:
+    - [file: 檔名] 摘要與關聯理由
+    - ...
+
+    ---
+
     - 參考資料1
         - {{參考資料文件名稱}}
         - {{參考資料文件內容}}
@@ -765,14 +782,19 @@ if prompt := st.chat_input("請問我有什麼可以協助的嗎?"):
                 python_cmd = sys.executable or "python"
                 # 以目前檔案位置為基準定位 tools 目錄
                 project_root = os.path.dirname(os.path.abspath(__file__))
-                script_path = os.path.join(project_root, "tools", "get_user_info.py")
-                if not os.path.exists(script_path):
-                    st.error(f"找不到工具腳本：{script_path}")
+                tools_path = os.path.join(project_root, "tools")
+                if not os.path.exists(tools_path):
+                    st.error(f"找不到工具腳本：{tools_path}")
                     st.stop()
                 connection_info = {
                     "get_user_info_tool": {
                         "command": python_cmd,
-                        "args": [script_path],
+                        "args": [os.path.join(tools_path, "get_user_info.py")],
+                        "transport": "stdio",
+                    },
+                    "get_chat_history_tool": {
+                        "command": python_cmd,
+                        "args": [os.path.join(tools_path, "get_chat_history.py")],
                         "transport": "stdio",
                     }
                 }

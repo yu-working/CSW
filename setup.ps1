@@ -71,10 +71,8 @@ if (!(Test-Path $venvPy)) {
 # 6️⃣ 安裝 requirements.txt
 # ================================
 if (Test-Path "requirements.txt") {
-    Write-Host "Installing dependencies into venv..."
-    & $venvPy -m pip install --upgrade pip
-    & $venvPy -m pip install -r requirements.txt
-    # 若偏好使用 uv：uv pip install --python $venvPy -r requirements.txt
+    Write-Host "Installing dependencies into venv with uv pip..."
+    uv pip install --python $venvPy -r requirements.txt
 } else {
     Write-Host "No requirements.txt found."
 }

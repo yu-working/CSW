@@ -7,11 +7,9 @@ $branch    = "master"     # 若為 master 請改 master
 $projectDir = "customer_service_wingman"  # 專案資料夾名稱
 
 # ================================
-# 1️⃣ 建立專案資料夾
+# 1️⃣ 使用當前目錄（不建立新資料夾）
 # ================================
-Write-Host "Creating project directory..."
-New-Item -ItemType Directory -Force -Path $projectDir | Out-Null
-Set-Location $projectDir
+Write-Host "Using current directory..."
 
 # ================================
 # 2️⃣ 下載 GitHub Repo（ZIP）
@@ -23,14 +21,24 @@ $zipFile = "repo.zip"
 Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile
 
 # ================================
-# 3️⃣ 解壓縮
+# 3️⃣ 解壓縮並清理 ZIP
 # ================================
 Write-Host "Extracting repository..."
 Expand-Archive $zipFile -DestinationPath . -Force
 
-# 進入解壓後資料夾
+# 解壓縮完畢後把 repo.zip 移除
+Write-Host "Cleaning up zip..."
+Remove-Item $zipFile -Force
+
+# 取得解壓後資料夾名稱並改名為 customer_service_wingman，然後進入該資料夾
 $extractedFolder = "$repoName-$branch"
-Set-Location $extractedFolder
+Write-Host "Renaming extracted folder to $projectDir..."
+if (Test-Path $projectDir) {
+    Write-Host "Target folder '$projectDir' already exists. Skipping rename."
+} else {
+    Rename-Item -Path $extractedFolder -NewName $projectDir -Force
+}
+Set-Location $projectDir
 
 # ================================
 # 4️⃣ 安裝 uv
@@ -38,8 +46,10 @@ Set-Location $extractedFolder
 Write-Host "Installing uv..."
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-# 重新載入環境變數
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+# 重新載入 PATH（合併 User 與 Machine，避免抓不到指令）
+$machinePath = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+$userPath    = [System.Environment]::GetEnvironmentVariable("Path","User")
+$env:Path    = "$userPath;$machinePath"
 
 uv --version
 

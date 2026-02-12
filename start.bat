@@ -12,6 +12,6 @@ call ".venv\Scripts\activate"
 set DATA_FOLDER=data
 set DEFAULT_DATA_FILE=default_data/FAQ_Default.xlsx
 
-streamlit run app.py
+streamlit run app.py --browser.gatherUsageStats=false
 
 pause

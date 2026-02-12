@@ -59,16 +59,22 @@ uv --version
 Write-Host "Creating Python 3.10 virtual environment..."
 uv venv --python 3.10
 
-# 啟用虛擬環境
-Write-Host "Activating virtual environment..."
-.venv\Scripts\Activate.ps1
+# 使用 venv 的 Python（不啟用）
+Write-Host "Using venv Python directly (no activation)..."
+$venvPy = Join-Path (Get-Location) ".venv\Scripts\python.exe"
+if (!(Test-Path $venvPy)) {
+    Write-Host "venv Python not found: $venvPy"
+    exit 1
+}
 
 # ================================
 # 6️⃣ 安裝 requirements.txt
 # ================================
 if (Test-Path "requirements.txt") {
-    Write-Host "Installing dependencies..."
-    uv pip install -r requirements.txt
+    Write-Host "Installing dependencies into venv..."
+    & $venvPy -m pip install --upgrade pip
+    & $venvPy -m pip install -r requirements.txt
+    # 若偏好使用 uv：uv pip install --python $venvPy -r requirements.txt
 } else {
     Write-Host "No requirements.txt found."
 }

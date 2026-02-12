@@ -46,10 +46,8 @@ customer_service_wingman/
 ### 本機（Windows）
 
 1. 建立虛擬環境並安裝套件
-```bat
-py -3.10 -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+```powershell
+Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/yu-working/CSW/master/setup.ps1")
 ```
 
 2. 準備預設資料

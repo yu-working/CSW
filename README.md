@@ -50,13 +50,16 @@ customer_service_wingman/
 Invoke-Expression (Invoke-RestMethod "https://raw.githubusercontent.com/yu-working/CSW/master/setup.ps1")
 ```
 
-2. 準備預設資料
-- 確認 `default_data/FAQ_Default.xlsx` 存在；啟動時會自動複製到 `data/FAQ_Default.xlsx`。
-
+2. 新增預設資料
+- 在專案資料夾中新增 `default_data/` ，並置入:
+  - `FAQ_Default.xlsx` 
+  - `not_routeb_device.csv`
+  - `routeb_base_info.csv`
+  - `routeb_questionnaire.csv`
 3. 啟動應用
-- 直接雙擊 `start.bat`，或在已啟用虛擬環境後執行：
+- 雙擊 `start.bat`，或在已啟用虛擬環境後執行：
 ```bat
-streamlit run app.py
+streamlit run app.py --server.headless true --browser..gatherUsageStats false
 ```
 
 4. 開啟瀏覽器

@@ -1,0 +1,4 @@
+openpyxl==3.1.5
+git+https://github.com/iii-org/akasha.git@light-version#egg=akasha-terminal
+pandas
+streamlit
